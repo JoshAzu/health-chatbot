@@ -1,12 +1,14 @@
 import tkinter as tk
 import os
 import json
+import datetime
 
 from tkinter import *
 from tkinter import scrolledtext ,ttk
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+from pathlib import Path
 
 # Import environment variables
 from dotenv import load_dotenv, find_dotenv
@@ -20,6 +22,61 @@ class FoodType(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     foods: list[FoodType]
+
+# Define a function to check tracker.json file
+def check_tracker_json():
+    
+    # Change working directory to script directory
+    abspath = os.path.abspath(__file__)
+    dname = os.path.dirname(abspath)
+    os.chdir(dname)
+
+    # Check tracker.json file
+    file_path = "tracker.json"
+    json_file = Path(file_path)
+
+    if json_file.is_file():
+        return True
+    else:
+        return False
+
+# Define a function to update tracker.json
+def update_tracker_json(foods_parsed, date_today):
+    file_path = "tracker.json"
+
+    # If tracker.json file exists, load the json file
+    if check_tracker_json():
+        with open(file_path, mode = "r+") as read_file:
+            tracker_json = json.load(read_file)
+
+            # If today has not been recorded in the json file, create new entry
+            if str(date_today) not in tracker_json:
+                foods_list = []
+                for row in foods_parsed:
+                    foods_list.append(row)
+                tracker_json[date_today] = foods_list
+                read_file.seek(0)
+                json.dump(tracker_json, read_file, indent = 2)
+
+            # If today has already been recorded in the json file, append the entry
+            else:
+                for row in foods_parsed:
+                    tracker_json[date_today].append(row)
+                read_file.seek(0)
+                json.dump(tracker_json, read_file, indent = 2)
+
+    # If tracker.json file does not exists, create new json file
+    else:
+        foods_list = []
+        for row in foods_parsed:
+            foods_list.append(row)
+        tracker_json = {
+            date_today:foods_list
+        }
+
+        # Write data into new json file
+        with open(file_path, mode = "w") as out_file:
+            json.dump(tracker_json, out_file, indent = 2)
 
 # Define a function to send Gemini requests and return responses
 def send(event = None):
@@ -45,7 +102,14 @@ def send(event = None):
     response_json = json.loads(response.text)
     response_parsed = response_json["response"]
     foods_parsed = response_json["foods"]
-    print(foods_parsed)
+
+    # Get current date
+    date = datetime.datetime.now()
+    date_today = str(date.year) + "-" + str(date.month) + "-" + str(date.day)
+
+    # Check if last message included food
+    if foods_parsed:
+        update_tracker_json(foods_parsed, date_today)
 
     # Append response to chat log
     chat.insert(tk.END, "Coach: " + response_parsed + "\n\n")
