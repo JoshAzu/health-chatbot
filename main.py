@@ -78,6 +78,56 @@ def update_tracker_json(foods_parsed, date_today):
         with open(file_path, mode = "w") as out_file:
             json.dump(tracker_json, out_file, indent = 2)
 
+# Define a function to clear table tabs
+def clear_notebook_tabs(notebook):
+    for tab_name in notebook.tabs():
+        notebook.forget(tab_name)
+
+# Define a function to update gui table
+def update_table():
+
+    # Clear table tabs in notebook object
+    clear_notebook_tabs(notebook)
+
+    file_path = "tracker.json"
+
+    # Read tracker.json file and print foods into table
+    with open(file_path, mode = "r+") as read_file:
+        tracker_json = json.load(read_file)
+        for x in tracker_json:
+
+            # Create tabs for each entry in tracker.json
+            tab_frame = ttk.Frame(notebook)
+            notebook.add(tab_frame, text = str(x))
+            table = ttk.Treeview(tab_frame, columns = ("name", "calories"), show = "headings")
+            table.heading("name", text = "Food Name")
+            table.heading("calories", text = "Estimated Calories")
+            table.pack(expand = True, fill = "both")
+
+            # Insert data from tacker.json entry into table tabs
+            for row in tracker_json[x]:
+                table.insert(parent = "", index = 0, values = (row["name"], row["calories"]))
+
+    # Select tab for current day
+    tab_index = int(len(notebook.tabs())) - 1
+    notebook.select(tab_index)
+
+# Define a function to update calorie counter
+def update_calorie_counter(date_today):
+    file_path = "tracker.json"
+
+    # Read tracker.json file and sum up calories for the day
+    with open(file_path, mode = "r+") as read_file:
+        tracker_json = json.load(read_file)
+
+        # Check if today has been recorded
+        if str(date_today) in tracker_json:
+            calorie_sum = 0
+            for row in tracker_json[date_today]:
+                calories = int(row['calories'])
+                calorie_sum += calories
+            text_var.set("Daily Calories: " + str(calorie_sum))
+
 # Define a function to send Gemini requests and return responses
 def send(event = None):
 
@@ -110,10 +160,18 @@ def send(event = None):
     # Check if last message included food
     if foods_parsed:
         update_tracker_json(foods_parsed, date_today)
+        update_table()
+        update_calorie_counter(date_today)
 
     # Append response to chat log
     chat.insert(tk.END, "Coach: " + response_parsed + "\n\n")
     chat.config(state = "disabled")
+
+# Define a function to update calorie counter when selecting recorded days
+def select_tab(event):
+    selected_tab = notebook.select()
+    selected_tab_text = notebook.tab(selected_tab, "text")
+    update_calorie_counter(selected_tab_text)
 
 # Configure Gemini AI Client
 model_name = "gemini-2.5-pro"
@@ -143,6 +201,16 @@ submit_button.pack(side = LEFT)
 
 notebook = ttk.Notebook(root)
 notebook.pack(expand = True, fill = "both")
+notebook.bind("<<NotebookTabChanged>>", select_tab)
+
+# Get current date
+date = datetime.datetime.now()
+date_today = str(date.year) + "-" + str(date.month) + "-" + str(date.day)
+
+# Check if tracker.json is present before updating gui elements
+if check_tracker_json():
+    update_table()
+    update_calorie_counter(date_today)
 
 # Bind return key to send command
 root.bind("<Return>", send)
